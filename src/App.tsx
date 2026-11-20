@@ -1,5 +1,13 @@
 import { useState, useEffect, type FormEvent } from "react";
 import "./App.css";
+import {
+  onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut,
+  createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  type User,
+} from "firebase/auth";
+import { auth } from "./firebase";
+import { collection, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
+import { db } from "./firebase";
 
 type Currency = "RON" | "EUR";
 type Theme = "ocean" | "lavender" | "emerald" | "midnight";
@@ -61,6 +69,39 @@ function getTotals(expenses: Expense[]): Record<Currency, number> {
 }
 
 function App() {
+  // FIREBASE AUTHENTICATION
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [syncError, setSyncError] = useState("");
+  const [expensesReady, setExpensesReady] = useState(false);
+
+  async function emailLogin(register: boolean) {
+    setAuthError("");
+    try {
+      if (register) {
+        await createUserWithEmailAndPassword(auth, email.trim(), password);
+      } else {
+        await signInWithEmailAndPassword(auth, email.trim(), password);
+      }
+      setPassword("");
+    } catch (error) {
+      console.error(error);
+      setAuthError("Autentificarea a eșuat. Verifică emailul și parola (minimum 6 caractere la înregistrare).");
+    }
+  }
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthReady(true);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   // THEME
 
   const [theme, setTheme] = useState<Theme>(() => {
@@ -84,49 +125,46 @@ function App() {
 
   // EXPENSES
 
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    try {
-      const saved = localStorage.getItem("expenses");
+  const [expenses, setExpenses] = useState<Expense[]>([]);
 
-      if (!saved) return [];
-
-      const parsed: unknown = JSON.parse(saved);
-
-      if (!Array.isArray(parsed)) return [];
-
-      return parsed
-        .filter(
-          (expense) =>
-            expense &&
-            typeof expense.id === "string" &&
-            typeof expense.amount === "number" &&
-            Number.isFinite(expense.amount) &&
-            expense.amount > 0 &&
-            typeof expense.date === "string" &&
-            /^\d{4}-\d{2}-\d{2}$/.test(expense.date)
-        )
-        .map((expense) => ({
-          id: expense.id as string,
-          amount: expense.amount as number,
-          currency: expense.currency === "EUR" ? "EUR" as const : "RON" as const,
-          category:
-            typeof expense.category === "string"
-              ? expense.category
-              : "Other",
-          description:
-            typeof expense.description === "string"
-              ? expense.description
-              : "",
-          date: expense.date as string,
-        }));
-    } catch {
-      return [];
-    }
-  });
-
+  // Nu amestecăm datele între conturi. Firestore este sursa de adevăr.
   useEffect(() => {
-    localStorage.setItem("expenses", JSON.stringify(expenses));
-  }, [expenses]);
+    setExpenses([]);
+    setExpensesReady(false);
+    setSyncError("");
+    if (!user) return;
+
+    const expenseCollection = collection(db, "users", user.uid, "expenses");
+    const unsubscribe = onSnapshot(
+      expenseCollection,
+      (snapshot) => {
+        const next: Expense[] = snapshot.docs.flatMap((entry) => {
+          const item = entry.data();
+          if (
+            typeof item.amount !== "number" || !Number.isFinite(item.amount) || item.amount <= 0 ||
+            typeof item.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(item.date)
+          ) return [];
+          return [{
+            id: entry.id,
+            amount: item.amount,
+            currency: item.currency === "EUR" ? "EUR" : "RON",
+            category: typeof item.category === "string" ? item.category : "Other",
+            description: typeof item.description === "string" ? item.description : "",
+            date: item.date,
+          }];
+        });
+        setExpenses(next);
+        setExpensesReady(true);
+        setSyncError("");
+      },
+      (error) => {
+        console.error("Firestore:", error);
+        setSyncError("Nu putem citi cheltuielile. Verifică regulile Firestore și conexiunea.");
+        setExpensesReady(false);
+      }
+    );
+    return () => unsubscribe();
+  }, [user]);
 
   // FORM
 
@@ -142,7 +180,8 @@ function App() {
 
   // ADD EXPENSE
 
-  function addExpense(e: FormEvent<HTMLFormElement>) {
+  async function addExpense(e: FormEvent<HTMLFormElement>) {
+    if (!user || !expensesReady) return;
     e.preventDefault();
 
     const normalizedAmount = amount.trim().replace(",", ".");
@@ -167,7 +206,13 @@ function App() {
       date,
     };
 
-    setExpenses((previous) => [...previous, newExpense]);
+    try {
+      await setDoc(doc(db, "users", user.uid, "expenses", newExpense.id), newExpense);
+    } catch (error) {
+      console.error(error);
+      alert("Cheltuiala nu a putut fi salvată. Încearcă din nou.");
+      return;
+    }
 
     setAmount("");
     setDescription("");
@@ -177,16 +222,20 @@ function App() {
 
   // DELETE EXPENSE
 
-  function deleteExpense(id: string) {
+  async function deleteExpense(id: string) {
+    if (!user || !expensesReady) return;
     const confirmed = window.confirm(
       "Are you sure you want to delete this expense?"
     );
 
     if (!confirmed) return;
 
-    setExpenses((previous) =>
-      previous.filter((expense) => expense.id !== id)
-    );
+    try {
+      await deleteDoc(doc(db, "users", user.uid, "expenses", id));
+    } catch (error) {
+      console.error(error);
+      alert("Ștergerea nu a reușit. Încearcă din nou.");
+    }
   }
 
   // DATE FILTERS
@@ -234,7 +283,31 @@ function App() {
 
       <header className="header">
         <h1>Expense Tracker</h1>
-
+        <div className="auth-control">
+          {!authReady ? (
+            <span>Se verifică autentificarea...</span>
+          ) : user ? (
+            <>
+              <span>{user.displayName || user.email}</span>
+              <button type="button" onClick={() => signOut(auth)}>Deconectare</button>
+            </>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              <button type="button" onClick={async () => {
+                setAuthError("");
+                try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+                catch (error) { console.error(error); setAuthError("Conectarea Google a eșuat. Verifică domeniile autorizate în Firebase."); }
+              }}>Conectare cu Google</button>
+              <input type="email" aria-label="Email" placeholder="Email" value={email}
+                onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+              <input type="password" aria-label="Parolă" placeholder="Parolă" value={password}
+                onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+              <button type="button" onClick={() => void emailLogin(false)}>Intră</button>
+              <button type="button" onClick={() => void emailLogin(true)}>Creează cont</button>
+            </div>
+          )}
+          {authError && <p role="alert">{authError}</p>}
+        </div>
         <div className="theme-control">
           <label htmlFor="theme">Theme</label>
 
@@ -255,9 +328,13 @@ function App() {
       </header>
 
       <main>
+        {!user && authReady && <p role="status">Conectează-te pentru a vedea și salva cheltuielile tale.</p>}
+        {user && !expensesReady && !syncError && <p role="status">Se încarcă cheltuielile...</p>}
+        {syncError && <p role="alert">{syncError}</p>}
 
         {/* DASHBOARD */}
 
+        {user && expensesReady && <>
         <section className="dashboard">
 
           <div className="stat-card">
@@ -430,6 +507,7 @@ function App() {
           </div>
 
         </section>
+        </>}
       </main>
 
       <footer>
