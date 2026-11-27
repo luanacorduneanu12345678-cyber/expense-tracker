@@ -10,7 +10,7 @@ import { collection, doc, setDoc, deleteDoc, updateDoc, onSnapshot } from "fireb
 import { db } from "./firebase";
 
 type Currency = "RON" | "EUR";
-type Theme = "ocean" | "lavender" | "emerald" | "midnight";
+type Theme = "blue" | "purple" | "green" | "black" | "white" | "pink" | "yellow" | "brown" | "orange" | "red";
 
 type Expense = {
   id: string;
@@ -35,10 +35,16 @@ const categories = [
 const currencies: Currency[] = ["RON", "EUR"];
 
 const themes: Theme[] = [
-  "ocean",
-  "lavender",
-  "emerald",
-  "midnight",
+  "blue",
+  "purple",
+  "green",
+  "black",
+  "white",
+  "pink",
+  "yellow",
+  "brown",
+  "orange",
+  "red",
 ];
 
 function getToday() {
@@ -241,15 +247,21 @@ function App() {
     const saved = localStorage.getItem("expense-theme");
 
     if (
-      saved === "ocean" ||
-      saved === "lavender" ||
-      saved === "emerald" ||
-      saved === "midnight"
+      saved === "blue" ||
+      saved === "purple" ||
+      saved === "green" ||
+      saved === "black" ||
+      saved === "white" ||
+      saved === "pink" ||
+      saved === "yellow" ||
+      saved === "brown" ||
+      saved === "orange" ||
+      saved === "red"
     ) {
       return saved;
     }
 
-    return "ocean";
+    return "blue";
   });
 
   useEffect(() => {
@@ -660,7 +672,7 @@ function App() {
       </main>
 
       <footer>
-        Expense Tracker • Version 1.4.4 • Multi-Currency
+        Expense Tracker • Version 1.4.5 • Multi-Currency
       </footer>
 
     </div>
