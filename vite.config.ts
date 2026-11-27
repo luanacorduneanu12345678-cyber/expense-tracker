@@ -26,8 +26,8 @@ export default defineConfig({
 
         display: "standalone",
 
-        start_url: "./",
-        scope: "./",
+        start_url: "/expense-tracker/",
+        scope: "/expense-tracker/",
 
         icons: [
           {
