@@ -89,7 +89,7 @@ function App() {
       setPassword("");
     } catch (error) {
       console.error(error);
-      setAuthError("Autentificarea a eșuat. Verifică emailul și parola (minimum 6 caractere la înregistrare).");
+      setAuthError("Authentication failed. Check your email and password (at least 6 characters when registering).");
     }
   }
 
@@ -159,7 +159,7 @@ function App() {
       },
       (error) => {
         console.error("Firestore:", error);
-        setSyncError("Nu putem citi cheltuielile. Verifică regulile Firestore și conexiunea.");
+        setSyncError("Unable to load expenses. Check your connection and Firestore rules.");
         setExpensesReady(false);
       }
     );
@@ -210,7 +210,7 @@ function App() {
       await setDoc(doc(db, "users", user.uid, "expenses", newExpense.id), newExpense);
     } catch (error) {
       console.error(error);
-      alert("Cheltuiala nu a putut fi salvată. Încearcă din nou.");
+      alert("Unable to save the expense. Please try again.");
       return;
     }
 
@@ -234,7 +234,7 @@ function App() {
       await deleteDoc(doc(db, "users", user.uid, "expenses", id));
     } catch (error) {
       console.error(error);
-      alert("Ștergerea nu a reușit. Încearcă din nou.");
+      alert("Unable to delete the expense. Please try again.");
     }
   }
 
@@ -276,39 +276,8 @@ function App() {
     );
   }
 
-  return (
-    <div className={`app theme-${theme}`}>
-
-      {/* HEADER */}
-
-      <header className="header">
-        <h1>Expense Tracker</h1>
-        <div className="auth-control">
-          {!authReady ? (
-            <span>Se verifică autentificarea...</span>
-          ) : user ? (
-            <>
-              <span>{user.displayName || user.email}</span>
-              <button type="button" onClick={() => signOut(auth)}>Deconectare</button>
-            </>
-          ) : (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              <button type="button" onClick={async () => {
-                setAuthError("");
-                try { await signInWithPopup(auth, new GoogleAuthProvider()); }
-                catch (error) { console.error(error); setAuthError("Conectarea Google a eșuat. Verifică domeniile autorizate în Firebase."); }
-              }}>Conectare cu Google</button>
-              <input type="email" aria-label="Email" placeholder="Email" value={email}
-                onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-              <input type="password" aria-label="Parolă" placeholder="Parolă" value={password}
-                onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
-              <button type="button" onClick={() => void emailLogin(false)}>Intră</button>
-              <button type="button" onClick={() => void emailLogin(true)}>Creează cont</button>
-            </div>
-          )}
-          {authError && <p role="alert">{authError}</p>}
-        </div>
-        <div className="theme-control">
+  const themeControl = (
+    <div className="theme-control">
           <label htmlFor="theme">Theme</label>
 
           <select
@@ -325,11 +294,54 @@ function App() {
             ))}
           </select>
         </div>
+  );
+
+  return (
+    <div className={`app theme-${theme} ${!user ? "login-page" : ""}`}>
+
+      {/* HEADER */}
+
+      <header className="header">
+        <h1>Expense Tracker</h1>
+        <div className="auth-control">
+          {!authReady ? (
+            <span>Checking authentication...</span>
+          ) : user ? (
+            <>
+              <span>{user.displayName || user.email}</span>
+              <button type="button" onClick={() => signOut(auth)}>Sign out</button>
+            </>
+          ) : (
+            <div className="login-card">
+              <p className="login-description">Sign in to view and save your expenses.</p>
+              <div className="login-top-row">
+              <button className="google-button" type="button" onClick={async () => {
+                setAuthError("");
+                try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+                catch (error) { console.error(error); setAuthError("Google sign-in failed. Check authorized domains in Firebase."); }
+              }}>Sign in with Google</button>
+              {themeControl}
+              </div>
+              <div className="login-divider">or</div>
+              <h2>Sign in with email</h2>
+              <div className="login-email-row">
+              <input type="email" aria-label="Email" placeholder="Email address" value={email}
+                onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+              <input type="password" aria-label="Password" placeholder="Password" value={password}
+                onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+              <button className="login-button" type="button" onClick={() => void emailLogin(false)}>Sign in</button>
+              </div>
+              <p className="register-text">Don’t have an account?</p>
+              <button className="register-button" type="button" onClick={() => void emailLogin(true)}>Create account</button>
+            </div>
+          )}
+          {authError && <p role="alert">{authError}</p>}
+        </div>
+        {(user || !authReady) && themeControl}
       </header>
 
       <main>
-        {!user && authReady && <p role="status">Conectează-te pentru a vedea și salva cheltuielile tale.</p>}
-        {user && !expensesReady && !syncError && <p role="status">Se încarcă cheltuielile...</p>}
+        {user && !expensesReady && !syncError && <p role="status">Loading expenses...</p>}
         {syncError && <p role="alert">{syncError}</p>}
 
         {/* DASHBOARD */}
@@ -511,7 +523,7 @@ function App() {
       </main>
 
       <footer>
-        Expense Tracker • Version 1.2 • Multi-Currency
+        Expense Tracker • Version 1.3 • Multi-Currency
       </footer>
 
     </div>
